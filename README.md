@@ -1,1 +1,1 @@
-# coinsquaretest
+# meeohcoinsquare.github.io

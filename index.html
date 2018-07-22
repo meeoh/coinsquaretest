@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>Coinsquare Test</title>
+</head>
+
+<body>
+
+  <div id="root"></div>
+  <script src="https://fb.me/react-with-addons-15.0.0.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/redux/3.0.4/redux.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-redux/4.4.5/react-redux.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/redux-thunk/2.3.0/redux-thunk.min.js"></script>
+  <script src="https://fb.me/react-dom-0.14.0.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-core/5.8.34/browser.min.js"></script>
+  <link rel="stylesheet" href="index.css">
+
+  <script type="text/babel">
+
+        const nullQuoteData = {
+          btcBalance: null,
+          usdBalance: null
+        }
+
+        const { Component } = React;
+        const { Provider, connect } = ReactRedux;
+        const { applyMiddleware } = Redux;
+
+        // Redux Actions
+        const FETCH_PRICE = 'FETCH_PRICE';
+        const FETCH_PRICE_RECEIVED = 'FETCH_PRICE_RECEIVED'
+        const FETCH_PRICE_ERROR = 'FETCH_PRICE_ERROR'
+
+        // Redux Action Creators
+        const createFetchPrice = () => {
+          return {
+            type: FETCH_PRICE
+          }
+        }
+
+        const createFetchPriceReceived = (latestPrice) => {
+          return {
+            type: FETCH_PRICE_RECEIVED,
+            payload: {
+              latestPrice
+            }
+          }
+        }
+
+        const createFetchPriceError = (error) => {
+          return {
+            type: FETCH_PRICE_ERROR,
+            payload: {
+              error
+            }
+          }
+        }
+
+        const fetchPriceAction = () => {
+          return (dispatch, getState) => {
+            dispatch(createFetchPrice())
+            const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+            return fetch(proxyUrl + 'https://api.bitfinex.com/v1/pubticker/btcusd')
+              .then(response => response.json())
+              .then(data => {
+                dispatch(createFetchPriceReceived(data.last_price))
+              })
+              .catch(error => {
+                console.warn('received error: ', error)
+                dispatch(createFetchPriceError(error.message));
+              });
+          }
+        }
+
+        const initialState = {
+            latestPrice: null,
+            loading: false,
+            error: null
+        };
+
+        // Redux Reducer
+        const latestPriceReducer = (state = initialState, action) => {
+          switch (action.type) {
+            case 'FETCH_PRICE':
+              return {
+                ...state,
+                loading: true,
+              }
+            case 'FETCH_PRICE_RECEIVED':
+              return {
+                ...state,
+                latestPrice: action.payload.latestPrice,
+                loading: false
+              }
+            case 'FETCH_PRICE_ERROR':
+              return {
+                ...state,
+                error: action.payload.error,
+                loading: false
+              }
+            default:
+              return state;
+          }
+        }
+
+        const exchangeApp = Redux.combineReducers({
+          latestPriceReducer
+        })
+
+        // Redux Store
+        const createStoreWithMiddleware = Redux.applyMiddleware(ReduxThunk.default)(Redux.createStore);
+        const store = createStoreWithMiddleware(exchangeApp);
+
+        // Components
+        class App extends Component {
+          render() {
+            return (
+              <ConnectedContainer />
+            );
+          }
+        }
+
+        class Container extends Component {
+
+          trade(quote=false) {
+            if(this.props.error || this.props.loading) {
+              return;
+            }
+
+            let {tradeAmount, usdBalance, btcBalance} = this.state;
+            let {latestPrice} = this.props
+
+            if(tradeAmount > usdBalance) {
+              this.setState({
+                error: 'Insufficient balance',
+                quote: nullQuoteData
+              })
+              return;
+            }
+
+            if(tradeAmount <= 0 || isNaN(tradeAmount)) {
+              this.setState({
+                error: 'Invalid trade amount',
+                quote: nullQuoteData
+              })
+              return;
+            }
+
+            btcBalance += 1/latestPrice * tradeAmount;
+            usdBalance -= tradeAmount;
+
+            if(quote == true) {
+              this.setState({
+                quote: {
+                  usdBalance,
+                  btcBalance
+                },
+                error: null
+              })
+            } else {
+              this.setState({
+                btcBalance,
+                usdBalance,
+                tradeAmount: null,
+                error: null,
+                quote: nullQuoteData
+              });
+            }
+          }
+
+          constructor(props) {
+            super();
+            props.fetchPrice();
+            this.state = {
+              usdBalance: 156.12,
+              btcBalance: 0.00000000,
+              tradeAmount: null,
+              quote: nullQuoteData,
+              error: null
+            }
+            this.trade = this.trade.bind(this);
+            this.onChange = this.onChange.bind(this);
+          }
+
+          onChange(e) {
+            this.setState({
+              tradeAmount: e.target.value,
+              quote: nullQuoteData,
+              error: null
+            })
+          }
+
+          render() {
+            const props = this.props;
+            const loadCondition = props.loading || (!props.latestPrice && !props.error);
+
+            return (
+              <div className="container">
+                {loadCondition ?
+                <div className="loaderWrapper">
+                  <div className="lds-dual-ring"></div>
+                </div> : ''}
+                <div className="topSection">
+                  <div className="mainContent">
+                    <div>
+                      <p>Account Balance</p>
+                    </div>
+                    <div className="balances">
+                    <div>
+                      <p><b>USD</b> {this.state.usdBalance.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p><b style={{marginRight: '5px'}}>BTC</b> {this.state.btcBalance == 0 ? this.state.btcBalance.toFixed(8) : this.state.btcBalance}</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3>Trade</h3>
+                    <p className="error">{this.state.error}</p>
+                    <p className="error">{props.error}</p>
+                  </div>
+
+                  <div className="boxed firstBox">
+                    <div><b>USD</b></div>
+                  </div>
+                  <div className="boxed">
+                    <input type="number" value={this.state.tradeAmount} onChange={this.onChange} placeholder="Enter your amount" />
+                  </div>
+
+                  <div><h3>For</h3></div>
+
+                  <div className="boxed">
+                    <div><b>BTC</b></div>
+                  </div>
+                  <div className="boxed quoteButton">
+                    <div onClick={() => this.trade(true)}>Display Quote</div>
+                  </div>
+
+                  {this.state.quote.usdBalance != null ?
+                  <div>
+                    <p>USD Balance:{this.state.quote.usdBalance}</p>
+                    <p>BTC Balance:{this.state.quote.btcBalance}</p>
+                  </div> : null}
+                  </div>
+                </div>
+                <div className="bottomSection"><button className={`tradeButton ${props.error ? 'disabled': ''}`} onClick={this.trade}>Trade</button></div>
+              </div>
+            );
+          }
+        }
+
+        function mapStateToProps(state) {
+          let {latestPrice, loading, error} = state.latestPriceReducer;
+          return {
+            latestPrice,
+            loading,
+            error
+          }
+        }
+
+        function mapDispatchToProps(dispatch) {
+          return {
+            fetchPrice: () => dispatch(fetchPriceAction())
+          }
+        }
+
+        const ConnectedContainer = connect(
+          mapStateToProps,
+          mapDispatchToProps
+        )(Container);
+
+        ReactDOM.render(
+          <Provider store={store}>
+            <App />
+          </Provider>,
+          document.getElementById('root')
+        );
+      </script>
+</body>
+
+</html>
